@@ -19,7 +19,6 @@ const WRITE_CHAR_UUID: uuid::Uuid = uuid::Uuid::from_u128(0xcba20002224d11e69fb8
 const READ_CHAR_UUID: uuid::Uuid = uuid::Uuid::from_u128(0xcba20003224d11e69fb80002a5d5c51bu128);
 
 const RESPONSE_OK: u8 = 1;
-const CMD_READ_STORE_INFO: u8 = 58;
 const CMD_READ_INDEX_INFO: u8 = 59;
 const CMD_READ_SAMPLE_INFO: u8 = 60;
 
@@ -50,32 +49,6 @@ impl MeterSectionInfo {
             data_length,
             interval,
         })
-    }
-}
-
-#[derive(Debug)]
-struct MeterStoreInfo {
-    section: u8,
-}
-
-impl MeterStoreInfo {
-    fn from_response(data: &[u8]) -> Option<Vec<MeterStoreInfo>> {
-        if data.len() < 2 || data[0] != RESPONSE_OK {
-            return None;
-        }
-
-        let number_of_entries = (data[1] & 0xf).into();
-        if data.len() < 2 + number_of_entries {
-            return None;
-        }
-
-        let mut result = Vec::with_capacity(number_of_entries);
-
-        for section in &data[2..2 + number_of_entries] {
-            result.push(MeterStoreInfo { section: *section })
-        }
-
-        Some(result)
     }
 }
 
