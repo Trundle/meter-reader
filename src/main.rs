@@ -173,10 +173,28 @@ impl Meter {
     pub async fn read_samples(
         &mut self,
         section_info: &MeterSectionInfo,
+        duration: Option<Duration>,
     ) -> bluer::Result<Vec<MeterSampleValue>> {
-        let mut result =
-            Vec::with_capacity((section_info.data_length / SAMPLE_COUNT as u16).into());
-        for i in (0..section_info.data_length).step_by(SAMPLE_COUNT.into()) {
+        let mut result = Vec::with_capacity(section_info.data_length.into());
+
+        let mut all_iter;
+        let mut last_n_iter;
+        let samples: &mut dyn Iterator<Item = u16> = {
+            all_iter = (0..(section_info.data_length / SAMPLE_COUNT as u16) * SAMPLE_COUNT as u16)
+                .step_by(SAMPLE_COUNT.into());
+            if let Some(duration) = duration {
+                let samples_wanted = duration.num_seconds() / section_info.interval as i64;
+                let sample_count = SAMPLE_COUNT as i64;
+                last_n_iter = all_iter
+                    .rev()
+                    .take(((samples_wanted + sample_count - 1) / sample_count) as usize)
+                    .rev();
+                &mut last_n_iter
+            } else {
+                &mut all_iter
+            }
+        };
+        for i in samples {
             let mut cmd = gen_cmd(CMD_READ_SAMPLE_INFO, 4);
             cmd[3] = 0;
             cmd[4] = (i >> 8) as u8;
@@ -267,6 +285,9 @@ mod cli {
         #[clap(long, short, value_parser)]
         pub dump_historic: bool,
 
+        #[clap(long, value_parser=parse_duration)]
+        pub dump_last: Option<chrono::Duration>,
+
         #[clap(value_parser=parse_addr)]
         pub address: Option<bluer::Address>,
     }
@@ -274,16 +295,54 @@ mod cli {
     fn parse_addr(s: &str) -> Result<bluer::Address, &'static str> {
         bluer::Address::from_str(s).map_err(|_| "invalid address")
     }
+
+    fn parse_duration(s: &str) -> Result<chrono::Duration, &'static str> {
+        let digits: String = s.chars().take_while(|x| x.is_digit(10)).collect();
+        let mut value = digits.parse::<i64>().map_err(|_| "invalid number")?;
+        let unit: String = s.chars().skip(digits.len()).collect();
+        value *= match unit.as_str() {
+            "m" => 1,
+            "h" => 60,
+            "d" => 60 * 24,
+            _ => return Err("invalid time unit"),
+        };
+
+        Ok(chrono::Duration::minutes(value))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use crate::cli::parse_duration;
+
+        #[test]
+        fn parses_durations() {
+            assert_eq!(parse_duration(&"1d"), Ok(chrono::Duration::days(1)));
+            assert_eq!(parse_duration(&"5m"), Ok(chrono::Duration::minutes(5)));
+            assert_eq!(parse_duration(&"42h"), Ok(chrono::Duration::hours(42)));
+        }
+    }
 }
 
 fn dump_csv(index_info: &MeterSectionInfo, samples: &[MeterSampleValue]) {
-    let mut current_time = Local.timestamp(index_info.start_time.into(), 0);
     let interval = Duration::seconds(index_info.interval.into());
+    let mut current_time = Local.timestamp(index_info.start_time.into(), 0)
+        + (interval * (index_info.data_length - samples.len() as u16).into());
+
+    let diff = {
+        let diff = Local::now() - Local.timestamp(index_info.end_time.into(), 0);
+        if diff > interval {
+            diff
+        } else {
+            Duration::zero()
+        }
+    };
 
     for value in samples {
         println!(
             "{}\t{}\t{}",
-            current_time, value.temperature, value.humidity
+            current_time + diff,
+            value.temperature,
+            value.humidity
         );
         current_time = current_time + interval;
     }
@@ -311,10 +370,10 @@ async fn main() -> bluer::Result<()> {
             let device = adapter.device(addr)?;
             if let Some(service_data) = device.service_data().await? {
                 if let Some(data) = service_data.get(&ADVERTISEMENT_SERVICE_UUID) {
-                    if args.dump_historic {
+                    if args.dump_historic || args.dump_last.is_some() {
                         let mut meter = Meter::new(&adapter, addr)?;
                         if let Some(index_info) = meter.read_section_info().await? {
-                            let samples = meter.read_samples(&index_info).await?;
+                            let samples = meter.read_samples(&index_info, args.dump_last).await?;
                             dump_csv(&index_info, &samples);
                         }
                         meter.disconnect().await?;
@@ -329,7 +388,7 @@ async fn main() -> bluer::Result<()> {
             }
         }
 
-        if Instant::now() - started > std::time::Duration::new(5, 0) {
+        if Instant::now() - started > std::time::Duration::new(10, 0) {
             break;
         }
     }
