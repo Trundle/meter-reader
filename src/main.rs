@@ -19,6 +19,7 @@ const WRITE_CHAR_UUID: uuid::Uuid = uuid::Uuid::from_u128(0xcba20002224d11e69fb8
 const READ_CHAR_UUID: uuid::Uuid = uuid::Uuid::from_u128(0xcba20003224d11e69fb80002a5d5c51bu128);
 
 const RESPONSE_OK: u8 = 1;
+const CMD_SET_TIME: u8 = 5;
 const CMD_READ_INDEX_INFO: u8 = 59;
 const CMD_READ_SAMPLE_INFO: u8 = 60;
 
@@ -209,6 +210,21 @@ impl Meter {
         Ok(result)
     }
 
+    pub async fn set_time(&mut self) -> bluer::Result<()> {
+        let mut cmd = gen_cmd(CMD_SET_TIME, 10);
+        let i = cmd.len() - 10;
+        cmd[i] = 3;
+        cmd[i + 1] = 0;
+        for (j, byte) in Local::now().timestamp().to_be_bytes().iter().enumerate() {
+            cmd[i + 2 + j] = *byte;
+        }
+        let response = self.exec(&cmd).await?;
+        if response.is_empty() || response[0] != RESPONSE_OK {
+            println!("[WARNING] Got non-okay response when setting time");
+        }
+        Ok(())
+    }
+
     async fn exec(&mut self, cmd: &[u8]) -> bluer::Result<Vec<u8>> {
         self.connect().await?;
         if let Some(read_char) = &self.read_char {
@@ -265,10 +281,9 @@ async fn find_characteristics(
 }
 
 fn gen_cmd(cmd: u8, payload_length: usize) -> Vec<u8> {
-    assert!(cmd > 0xf);
     let mut data = vec![0u8; 3 + payload_length];
     data[0] = 0x57;
-    data[1] = 0x0f;
+    data[1] = if cmd > 0x0f { 0x0f } else { 0 };
     data[2] = cmd;
     data
 }
@@ -287,6 +302,9 @@ mod cli {
 
         #[clap(long, value_parser=parse_duration)]
         pub dump_last: Option<chrono::Duration>,
+
+        #[clap(long, value_parser)]
+        pub set_time: bool,
 
         #[clap(value_parser=parse_addr)]
         pub address: Option<bluer::Address>,
@@ -328,21 +346,10 @@ fn dump_csv(index_info: &MeterSectionInfo, samples: &[MeterSampleValue]) {
     let mut current_time = Local.timestamp(index_info.start_time.into(), 0)
         + (interval * (index_info.data_length - samples.len() as u16).into());
 
-    let diff = {
-        let diff = Local::now() - Local.timestamp(index_info.end_time.into(), 0);
-        if diff > interval {
-            diff
-        } else {
-            Duration::zero()
-        }
-    };
-
     for value in samples {
         println!(
             "{}\t{}\t{}",
-            current_time + diff,
-            value.temperature,
-            value.humidity
+            current_time, value.temperature, value.humidity
         );
         current_time = current_time + interval;
     }
@@ -370,6 +377,12 @@ async fn main() -> bluer::Result<()> {
             let device = adapter.device(addr)?;
             if let Some(service_data) = device.service_data().await? {
                 if let Some(data) = service_data.get(&ADVERTISEMENT_SERVICE_UUID) {
+                    if args.set_time {
+                        let mut meter = Meter::new(&adapter, addr)?;
+                        meter.set_time().await?;
+                        meter.disconnect().await?;
+                    }
+
                     if args.dump_historic || args.dump_last.is_some() {
                         let mut meter = Meter::new(&adapter, addr)?;
                         if let Some(index_info) = meter.read_section_info().await? {
