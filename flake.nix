@@ -4,23 +4,49 @@
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
   outputs = { self, flake-utils, nixpkgs }:
-    flake-utils.lib.eachDefaultSystem (system: {
-      devShell =
-        let
-          pkgs = import nixpkgs {
-            inherit system;
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+        };
+
+        meterRPackages = with pkgs.rPackages; [
+          ggplot2
+          ggthemes
+          readr
+          lubridate
+          patchwork
+        ];
+      in
+      {
+        apps.plot-meter-data = flake-utils.lib.mkApp {
+          drv = pkgs.writeShellApplication {
+            name = "plot-meter-data";
+
+            runtimeInputs = [
+              (pkgs.rWrapper.override { packages = meterRPackages; })
+            ];
+
+            text = ''
+              Rscript ${./src/plot.R} "$@"
+            '';
           };
-        in
-        pkgs.mkShell {
+        };
+
+        devShell = pkgs.mkShell {
           packages = with pkgs; [
             bluez
             cargo
-	    clippy
+            clippy
             dbus
             gcc
             pkg-config
-	    rustfmt
+            rustfmt
+
+            (rstudioWrapper.override {
+              packages = meterRPackages;
+            })
           ];
         };
-    });
+      });
 }
