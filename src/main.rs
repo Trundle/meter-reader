@@ -391,7 +391,10 @@ async fn main() -> bluer::Result<()> {
                         }
                         meter.disconnect().await?;
                     } else if let Some(value) = MeterValue::from_data(data) {
-                        println!("{}: {}°C, {}%", addr, value.temperature, value.humidity);
+                        println!(
+                            "{}: {}°C, {}% humidity, {}% battery",
+                            addr, value.temperature, value.humidity, value.battery
+                        );
                     }
                 }
             }
