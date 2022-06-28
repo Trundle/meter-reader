@@ -1,0 +1,16 @@
+[package]
+name = "meterreader"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bluer = { version = "0.15.0", features = ["bluetoothd"] }
+chrono = "0.4"
+clap = { version = "3.2.6", features = ["derive"] }
+meterreader_models = { path = "../meterreader_models" }
+futures = "0.3"
+tokio = { version = "1", features = ["rt", "macros"] }
+uuid = "1"
+

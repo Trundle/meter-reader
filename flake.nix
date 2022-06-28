@@ -1,13 +1,20 @@
 {
   description = "Read data from SwitchBot Meter Plus devices";
 
-  inputs.flake-utils.url = "github:numtide/flake-utils";
+  inputs = {
+    flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+  };
 
-  outputs = { self, flake-utils, nixpkgs }:
+  outputs = { self, flake-utils, nixpkgs, rust-overlay }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
+
+          overlays = [
+            (import rust-overlay)
+          ];
         };
 
         meterRPackages = with pkgs.rPackages; [
@@ -37,11 +44,11 @@
           packages = with pkgs; [
             bluez
             cargo
-            clippy
+            cargo-fuzz
             dbus
             gcc
             pkg-config
-            rustfmt
+            rust-bin.nightly.latest.default
 
             (rstudioWrapper.override {
               packages = meterRPackages;

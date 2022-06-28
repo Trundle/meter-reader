@@ -1,0 +1,37 @@
+[package]
+name = "meterreader-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.meterreader_models]
+path = "../src/meterreader_models"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "meter_value"
+path = "fuzz_targets/meter_value.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "meter_sample_value"
+path = "fuzz_targets/meter_sample_value.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "meter_section_info"
+path = "fuzz_targets/meter_section_info.rs"
+test = false
+doc = false

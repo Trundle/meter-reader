@@ -5,6 +5,8 @@ use futures::{pin_mut, StreamExt};
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use meterreader_models::{MeterSampleValue, MeterSectionInfo, MeterValue};
+
 // 0000fd3d-0000-1000-8000-00805f9b34fb
 const ADVERTISEMENT_SERVICE_UUID: uuid::Uuid =
     uuid::Uuid::from_u128(0x0000fd3d00001000800000805f9b34fbu128);
@@ -24,118 +26,6 @@ const CMD_READ_INDEX_INFO: u8 = 59;
 const CMD_READ_SAMPLE_INFO: u8 = 60;
 
 const SAMPLE_COUNT: u8 = 6;
-
-#[derive(Debug, PartialEq)]
-struct MeterSectionInfo {
-    start_time: u32,
-    end_time: u32,
-    data_length: u16,
-    interval: u16,
-}
-
-impl MeterSectionInfo {
-    fn from_response(data: &[u8]) -> Option<MeterSectionInfo> {
-        if data.len() < 13 || data[0] != RESPONSE_OK {
-            return None;
-        }
-
-        let start_time = u32::from_be_bytes(data[1..5].try_into().unwrap());
-        let end_time = u32::from_be_bytes(data[5..9].try_into().unwrap());
-        let data_length = u16::from_be_bytes(data[9..11].try_into().unwrap());
-        let interval = u16::from_be_bytes(data[11..13].try_into().unwrap());
-
-        Some(MeterSectionInfo {
-            start_time,
-            end_time,
-            data_length,
-            interval,
-        })
-    }
-}
-
-#[derive(Debug, PartialEq)]
-struct MeterSampleValue {
-    temperature: f32,
-    humidity: u8,
-}
-
-impl MeterSampleValue {
-    pub fn from_response(data: &[u8]) -> Option<Vec<MeterSampleValue>> {
-        if data.len() < 6 || data[0] != RESPONSE_OK {
-            return None;
-        }
-
-        let mut result = Vec::with_capacity((data.len() - 1) / 6);
-
-        for i in (1..(data.len() - 1)).step_by(5) {
-            result.push(MeterSampleValue::first_value(&data[i..]));
-            result.push(MeterSampleValue::second_value(&data[i..]));
-        }
-
-        Some(result)
-    }
-
-    fn first_value(data: &[u8]) -> MeterSampleValue {
-        assert!(data.len() >= 3);
-
-        let mut temperature = (data[0] & 0x7f) as f32 + (((data[2] >> 4) & 0xf) as f32 / 10.0);
-        if (data[0] & 0x80) == 0 {
-            temperature = -temperature;
-        }
-
-        let humidity = data[1] & 0x7f;
-
-        MeterSampleValue {
-            temperature,
-            humidity,
-        }
-    }
-
-    fn second_value(data: &[u8]) -> MeterSampleValue {
-        assert!(data.len() >= 5);
-
-        let mut temperature = (data[3] & 0x7f) as f32 + ((data[2] & 0xf) as f32 / 10.0);
-        if (data[3] & 0x80) == 0 {
-            temperature = -temperature;
-        }
-
-        let humidity = data[4] & 0x7f;
-
-        MeterSampleValue {
-            temperature,
-            humidity,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-struct MeterValue {
-    temperature: f32,
-    humidity: u8,
-    battery: u8,
-}
-
-impl MeterValue {
-    fn from_data(data: &[u8]) -> Option<MeterValue> {
-        if data.len() != 6 || data[0] != 105 {
-            return None;
-        }
-
-        let mut temperature = (data[4] & 0x7f) as f32 + ((data[3] & 0xf) as f32 / 10.0);
-        if (data[4] & 0b10000000) == 0 {
-            temperature = -temperature;
-        }
-
-        let humidity = data[5] & 0x7f;
-        let battery = data[2] & 0x7f;
-
-        Some(MeterValue {
-            temperature,
-            humidity,
-            battery,
-        })
-    }
-}
 
 struct Meter {
     device: Device,
@@ -315,7 +205,7 @@ mod cli {
     }
 
     fn parse_duration(s: &str) -> Result<chrono::Duration, &'static str> {
-        let digits: String = s.chars().take_while(|x| x.is_digit(10)).collect();
+        let digits: String = s.chars().take_while(|x| x.is_ascii_digit()).collect();
         let mut value = digits.parse::<i64>().map_err(|_| "invalid number")?;
         let unit: String = s.chars().skip(digits.len()).collect();
         value *= match unit.as_str() {
