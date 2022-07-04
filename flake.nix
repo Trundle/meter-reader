@@ -7,7 +7,7 @@
   };
 
   outputs = { self, flake-utils, nixpkgs, rust-overlay }:
-    flake-utils.lib.eachDefaultSystem (system:
+    flake-utils.lib.eachSystem [ "i686-linux" "x86_64-linux" ] (system:
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -40,6 +40,17 @@
           };
         };
 
+        defaultPackage =
+          let
+            rust = pkgs.rust-bin.fromRustupToolchainFile "${self}/rust-toolchain";
+          in
+          pkgs.callPackage "${self}/default.nix" {
+            rustPlatform = pkgs.makeRustPlatform {
+              cargo = rust;
+              rustc = rust;
+            };
+          };
+
         devShell = pkgs.mkShell {
           packages = with pkgs; [
             bluez
@@ -49,11 +60,17 @@
             gcc
             pkg-config
             rust-bin.nightly.latest.default
-
-            (rstudioWrapper.override {
-              packages = meterRPackages;
-            })
           ];
         };
+
+
+        devShells.rStudio = pkgs.mkShell
+          {
+            packages = with pkgs; [
+              (rstudioWrapper.override {
+                packages = meterRPackages;
+              })
+            ];
+          };
       });
 }
