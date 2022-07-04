@@ -9,16 +9,19 @@ use meterreader_models::{MeterSampleValue, MeterSectionInfo, MeterValue};
 
 // 0000fd3d-0000-1000-8000-00805f9b34fb
 const ADVERTISEMENT_SERVICE_UUID: uuid::Uuid =
-    uuid::Uuid::from_u128(0x0000fd3d00001000800000805f9b34fbu128);
+    uuid::Uuid::from_u128(0x0000_fd3d_0000_1000_8000_0080_5f9b_34fb_u128);
 
 // cba20d00-224d-11e6-9fb8-0002a5d5c51b
-const SERVICE_UUID: uuid::Uuid = uuid::Uuid::from_u128(0xcba20d00224d11e69fb80002a5d5c51bu128);
+const SERVICE_UUID: uuid::Uuid =
+    uuid::Uuid::from_u128(0xcba2_0d00_224d_11e6_9fb8_0002_a5d5_c51b_u128);
 
 // cba20002-224d-11e6-9fb8-0002a5d5c51b
-const WRITE_CHAR_UUID: uuid::Uuid = uuid::Uuid::from_u128(0xcba20002224d11e69fb80002a5d5c51bu128);
+const WRITE_CHAR_UUID: uuid::Uuid =
+    uuid::Uuid::from_u128(0xcba2_0002_224d_11e6_9fb8_0002_a5d5_c51b_u128);
 
 // cba20003-224d-11e6-9fb8-0002a5d5c51b
-const READ_CHAR_UUID: uuid::Uuid = uuid::Uuid::from_u128(0xcba20003224d11e69fb80002a5d5c51bu128);
+const READ_CHAR_UUID: uuid::Uuid =
+    uuid::Uuid::from_u128(0xcba2_0003_224d_11e6_9fb8_0002_a5d5_c51b_u128);
 
 const RESPONSE_OK: u8 = 1;
 const CMD_SET_TIME: u8 = 5;
@@ -71,14 +74,17 @@ impl Meter {
         let mut all_iter;
         let mut last_n_iter;
         let samples: &mut dyn Iterator<Item = u16> = {
-            all_iter = (0..(section_info.data_length / SAMPLE_COUNT as u16) * SAMPLE_COUNT as u16)
+            all_iter = (0..(section_info.data_length / u16::from(SAMPLE_COUNT))
+                * u16::from(SAMPLE_COUNT))
                 .step_by(SAMPLE_COUNT.into());
             if let Some(duration) = duration {
-                let samples_wanted = duration.num_seconds() / section_info.interval as i64;
-                let sample_count = SAMPLE_COUNT as i64;
+                let samples_wanted: usize =
+                    <i64 as TryInto<usize>>::try_into(duration.num_seconds()).unwrap()
+                        / usize::from(section_info.interval);
+                let sample_count = usize::from(SAMPLE_COUNT);
                 last_n_iter = all_iter
                     .rev()
-                    .take(((samples_wanted + sample_count - 1) / sample_count) as usize)
+                    .take((samples_wanted + sample_count - 1) / sample_count)
                     .rev();
                 &mut last_n_iter
             } else {
@@ -205,7 +211,7 @@ mod cli {
     }
 
     fn parse_duration(s: &str) -> Result<chrono::Duration, &'static str> {
-        let digits: String = s.chars().take_while(|x| x.is_ascii_digit()).collect();
+        let digits: String = s.chars().take_while(char::is_ascii_digit).collect();
         let mut value = digits.parse::<i64>().map_err(|_| "invalid number")?;
         let unit: String = s.chars().skip(digits.len()).collect();
         value *= match unit.as_str() {
@@ -224,17 +230,20 @@ mod cli {
 
         #[test]
         fn parses_durations() {
-            assert_eq!(parse_duration(&"1d"), Ok(chrono::Duration::days(1)));
-            assert_eq!(parse_duration(&"5m"), Ok(chrono::Duration::minutes(5)));
-            assert_eq!(parse_duration(&"42h"), Ok(chrono::Duration::hours(42)));
+            assert_eq!(parse_duration("1d"), Ok(chrono::Duration::days(1)));
+            assert_eq!(parse_duration("5m"), Ok(chrono::Duration::minutes(5)));
+            assert_eq!(parse_duration("42h"), Ok(chrono::Duration::hours(42)));
         }
     }
 }
 
 fn dump_csv(index_info: &MeterSectionInfo, samples: &[MeterSampleValue]) {
+    assert!(samples.len() <= u16::MAX.into());
+    let samples_len: u16 = samples.len().try_into().unwrap();
+
     let interval = Duration::seconds(index_info.interval.into());
     let mut current_time = Local.timestamp(index_info.start_time.into(), 0)
-        + (interval * (index_info.data_length - samples.len() as u16).into());
+        + (interval * (index_info.data_length - samples_len).into());
 
     for value in samples {
         println!(
@@ -345,8 +354,8 @@ mod tests {
         assert_eq!(
             result,
             Some(MeterSectionInfo {
-                start_time: 1637924839,
-                end_time: 1638048319,
+                start_time: 1_637_924_839,
+                end_time: 1_638_048_319,
                 interval: 120,
                 data_length: 1030
             })

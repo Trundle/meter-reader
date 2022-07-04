@@ -9,6 +9,8 @@ pub struct MeterSectionInfo {
 }
 
 impl MeterSectionInfo {
+    #![allow(clippy::missing_panics_doc)]
+    #[must_use]
     pub fn from_response(data: &[u8]) -> Option<MeterSectionInfo> {
         if data.len() < 13 || data[0] != RESPONSE_OK {
             return None;
@@ -35,6 +37,7 @@ pub struct MeterSampleValue {
 }
 
 impl MeterSampleValue {
+    #[must_use]
     pub fn from_response(data: &[u8]) -> Option<Vec<MeterSampleValue>> {
         if data.len() < 6 || data[0] != RESPONSE_OK || (data.len() - 1) % 5 != 0 {
             return None;
@@ -53,7 +56,7 @@ impl MeterSampleValue {
     fn first_value(data: &[u8]) -> MeterSampleValue {
         assert!(data.len() >= 3);
 
-        let mut temperature = (data[0] & 0x7f) as f32 + (((data[2] >> 4) & 0xf) as f32 / 10.0);
+        let mut temperature = f32::from(data[0] & 0x7f) + (f32::from((data[2] >> 4) & 0xf) / 10.0);
         if (data[0] & 0x80) == 0 {
             temperature = -temperature;
         }
@@ -69,7 +72,7 @@ impl MeterSampleValue {
     fn second_value(data: &[u8]) -> MeterSampleValue {
         assert!(data.len() >= 5);
 
-        let mut temperature = (data[3] & 0x7f) as f32 + ((data[2] & 0xf) as f32 / 10.0);
+        let mut temperature = f32::from(data[3] & 0x7f) + (f32::from(data[2] & 0xf) / 10.0);
         if (data[3] & 0x80) == 0 {
             temperature = -temperature;
         }
@@ -91,13 +94,14 @@ pub struct MeterValue {
 }
 
 impl MeterValue {
+    #[must_use]
     pub fn from_data(data: &[u8]) -> Option<MeterValue> {
         if data.len() != 6 || data[0] != 105 {
             return None;
         }
 
-        let mut temperature = (data[4] & 0x7f) as f32 + ((data[3] & 0xf) as f32 / 10.0);
-        if (data[4] & 0b10000000) == 0 {
+        let mut temperature = f32::from(data[4] & 0x7f) + (f32::from(data[3] & 0xf) / 10.0);
+        if (data[4] & 0x80) == 0 {
             temperature = -temperature;
         }
 
@@ -155,8 +159,8 @@ mod tests {
         assert_eq!(
             result,
             Some(MeterSectionInfo {
-                start_time: 1637924839,
-                end_time: 1638048319,
+                start_time: 1_637_924_839,
+                end_time: 1_638_048_319,
                 interval: 120,
                 data_length: 1030
             })
